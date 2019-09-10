@@ -6,12 +6,14 @@ import RPi.GPIO as GPIO
 import time
 from enum import Enum
 
+
 # LEDへ色を出力するときに使う天気一覧
 class Condition(Enum):
      RAIN = 1
      CLOUDS = 2
      CLEAR = 3
      NONE = 4
+
 
 # 天気をサーバーから取得する関数
 def get_weather():
@@ -47,35 +49,64 @@ def get_weather():
 	# 雨でも曇りでもなければ晴れとする
 	return Condition.CLEAR
 
+
+def change_led(last, next, green_led, red_led, blue_led):
+	before = get_duty(last)
+	after = get_duty(next)
+	green_led.start(before[0])
+	red_led.start(before[1])
+	blue_led.start(before[2])
+	for i in range(50):
+		green_duty = before[0] * (1 - 0.02 * i) + after[0] * 0.02 * i
+		red_duty = before[1] * (1 - 0.02 * i) + after[1] * 0.02 * i
+		blue_duty = before[2] * (1 - 0.02 * i) + after[2] * 0.02 * i
+		green_led.ChangeDutyCycle(green_duty)
+		red_led.ChangeDutyCycle(red_duty)
+		blue_led.ChangeDutyCycle(blue_duty)
+		time.sleep(0.1)
+
+
+def get_duty(condition):
+	if condition == Condition.RAIN:
+		green = 0
+		red = 0
+		blue = 100
+	if condition == Condition.CLOUDS:
+		green = 0
+		red = 100
+		blue = 100
+	if condition == Condition.CLEAR:
+		green = 100
+		red = 100
+		blue = 100
+	if condition == Condition.NONE:
+		green = 0
+		red = 0
+		blue = 0
+	return  green, red, blue
+
+
 # LEDの色をを天気によって切り替え
 # 10秒ごとに最新の情報に更新
 def led_loop():
 	# Raspberry PIのGPIOピンを初期化
+	GPIO.setwarnings(False)
 	GPIO.setmode(GPIO.BCM)
 	GPIO.setup(14, GPIO.OUT) # 緑LED用
 	GPIO.setup(15, GPIO.OUT) # 赤LED用
 	GPIO.setup(18, GPIO.OUT) # 青LED用
+	green_led = GPIO.PWM(14, 1000)
+	red_led = GPIO.PWM(15, 1000)
+	blue_led = GPIO.PWM(18, 1000)
 	try:
+		last_condition = Condition.NONE
 		while True:
 			# 現在の天気を取得
 			condition = get_weather()
+			print(condition)
 			# 天気の情報からLEDの出力を決定
-			if condition == Condition.RAIN:
-				GPIO.output(14, False)
-				GPIO.output(15, False)
-				GPIO.output(18, True)
-			if condition == Condition.CLOUDS:
-				GPIO.output(14, False)
-				GPIO.output(15, True)
-				GPIO.output(18, True)
-			if condition == Condition.CLEAR:
-				GPIO.output(14, True)
-				GPIO.output(15, True)
-				GPIO.output(18, True)
-			if condition == Condition.NONE:
-				GPIO.output(14, False)
-				GPIO.output(15, False)
-				GPIO.output(18, False)
+			change_led(last_condition, condition, green_led, red_led, blue_led)
+			last_condition = condition
 			time.sleep(10)
 	 
 	except KeyboardInterrupt:
@@ -83,8 +114,10 @@ def led_loop():
 	 
 	GPIO.cleanup()
 
+
 def main():
 	led_loop()
+
 
 if __name__ == '__main__':
 	main()
